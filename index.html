@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Monitor IoT Paciente</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Arial,sans-serif;
+}
+
+body{
+    background:#0f172a;
+    color:white;
+    padding:20px;
+}
+
+.container{
+    max-width:1400px;
+    margin:auto;
+}
+
+.title{
+    text-align:center;
+    margin-bottom:25px;
+}
+
+.title h1{
+    font-size:2rem;
+    color:#38bdf8;
+}
+
+.title p{
+    color:#94a3b8;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:
+    repeat(auto-fit,minmax(250px,1fr));
+    gap:20px;
+}
+
+.card{
+    background:#1e293b;
+    border-radius:20px;
+    padding:20px;
+    box-shadow:
+    0 0 20px rgba(0,0,0,0.4);
+}
+
+.card h2{
+    color:#38bdf8;
+    margin-bottom:10px;
+}
+
+.big-value{
+    font-size:2rem;
+    font-weight:bold;
+}
+
+.status{
+    padding:10px;
+    border-radius:12px;
+    text-align:center;
+    font-weight:bold;
+}
+
+.normal{
+    background:#16a34a;
+}
+
+.warning{
+    background:#ea580c;
+}
+
+.critical{
+    background:#dc2626;
+}
+
+.chart-container{
+    margin-top:25px;
+    display:grid;
+    grid-template-columns:
+    repeat(auto-fit,minmax(350px,1fr));
+    gap:20px;
+}
+
+.chart-card{
+    background:#1e293b;
+    border-radius:20px;
+    padding:20px;
+    height:400px;
+}
+
+.chart-card h2{
+    margin-bottom:10px;
+    color:#38bdf8;
+}
+
+canvas{
+    width:100% !important;
+    height:300px !important;
+}
+
+.footer{
+    text-align:center;
+    margin-top:25px;
+    color:#64748b;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="title">
+
+        <h1>
+            🩺 Monitor IoT del Paciente
+        </h1>
+
+        <p>
+            ESP32 + Telegram +
+            Sensores Ambientales
+        </p>
+
+    </div>
+
+    <div class="grid">
+
+        <div class="card">
+            <h2>🌡 Temperatura</h2>
+
+            <div
+            class="big-value"
+            id="temperature">
+
+                -- °C
+
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>💧 Humedad</h2>
+
+            <div
+            class="big-value"
+            id="humidity">
+
+                -- %
+
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🧍 Estado Paciente</h2>
+
+            <div
+            class="big-value"
+            id="movement">
+
+                ---
+
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🚨 Estado Alarma</h2>
+
+            <div
+            id="alarmBox"
+            class="status normal">
+
+                NORMAL
+
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📶 WiFi</h2>
+
+            <div
+            class="big-value"
+            id="wifi">
+
+                Conectando...
+
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>⚙ Umbrales</h2>
+
+            <p>
+                🌡 Temp:
+                <span id="tempLimits">
+                    --
+                </span>
+            </p>
+
+            <br>
+
+            <p>
+                💧 Hum:
+                <span id="humLimits">
+                    --
+                </span>
+            </p>
+
+        </div>
+
+    </div>
+
+    <!-- GRAFICAS -->
+
+    <div class="chart-container">
+
+        <div class="chart-card">
+
+            <h2>
+                🌡 Temperatura
+            </h2>
+
+            <canvas id="tempChart">
+            </canvas>
+
+        </div>
+
+        <div class="chart-card">
+
+            <h2>
+                💧 Humedad
+            </h2>
+
+            <canvas id="humChart">
+            </canvas>
+
+        </div>
+
+        <div class="chart-card">
+
+            <h2>
+                🧍 Movimiento
+            </h2>
+
+            <canvas id="movChart">
+            </canvas>
+
+        </div>
+
+    </div>
+
+    <div class="footer">
+
+        ESP32 IoT Patient Monitor
+
+    </div>
+
+</div>
+
+<script>
+
+// =======================
+// ARRAYS DATOS
+// =======================
+
+let labels = [];
+
+let tempData = [];
+let humData = [];
+let movData = [];
+
+const MAX_POINTS = 25;
+
+// =======================
+// CREAR GRAFICAS
+// =======================
+
+function createChart(
+    id,
+    label,
+    color,
+    isMovement=false
+){
+
+    return new Chart(
+
+        document
+        .getElementById(id),
+
+        {
+
+        type:'line',
+
+        data:{
+
+            labels:[],
+
+            datasets:[{
+
+                label:label,
+
+                data:[],
+
+                borderColor:color,
+
+                borderWidth:3,
+
+                tension:0.25,
+
+                pointRadius:1
+            }]
+        },
+
+        options:{
+
+            animation:false,
+
+            responsive:true,
+
+            maintainAspectRatio:false,
+
+            plugins:{
+
+                legend:{
+                    labels:{
+                        color:'white'
+                    }
+                }
+            },
+
+            scales:{
+
+                x:{
+                    ticks:{
+                        color:'white'
+                    }
+                },
+
+                y: isMovement ? {
+
+                    min:1,
+                    max:4,
+
+                    ticks:{
+
+                        color:'white',
+
+                        callback:function(value){
+
+                            const levels = {
+
+                                1:"REPOSO",
+                                2:"LEVE",
+                                3:"MODERADO",
+                                4:"BRUSCO"
+                            };
+
+                            return (
+                                levels[value]
+                                || value
+                            );
+                        }
+                    }
+
+                } : {
+
+                    ticks:{
+                        color:'white'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// =======================
+// CHARTS
+// =======================
+
+const tempChart =
+createChart(
+    "tempChart",
+    "Temperatura °C",
+    "#38bdf8"
+);
+
+const humChart =
+createChart(
+    "humChart",
+    "Humedad %",
+    "#22c55e"
+);
+
+const movChart =
+createChart(
+    "movChart",
+    "Movimiento",
+    "#f59e0b",
+    true
+);
+
+// =======================
+// UPDATE DATA
+// =======================
+
+async function updateData(){
+
+    try{
+
+        const response =
+        await fetch(
+            "/api/data",
+            {
+                cache:"no-store"
+            }
+        );
+
+        const data =
+        await response.json();
+
+        // CARDS
+
+        document
+        .getElementById(
+            "temperature"
+        ).textContent =
+        data.temperature +
+        " °C";
+
+        document
+        .getElementById(
+            "humidity"
+        ).textContent =
+        data.humidity +
+        " %";
+
+        document
+        .getElementById(
+            "movement"
+        ).textContent =
+        data.movement;
+
+        document
+        .getElementById(
+            "wifi"
+        ).textContent =
+        data.wifi;
+
+        document
+        .getElementById(
+            "tempLimits"
+        ).textContent =
+
+        data.temp_min +
+        "°C - " +
+
+        data.temp_max +
+        "°C";
+
+        document
+        .getElementById(
+            "humLimits"
+        ).textContent =
+
+        data.hum_min +
+        "% - " +
+
+        data.hum_max +
+        "%";
+
+        // ALARMA
+
+        const alarmBox =
+        document
+        .getElementById(
+            "alarmBox"
+        );
+
+        alarmBox.textContent =
+        data.alarm;
+
+        alarmBox.className =
+        "status";
+
+        if(
+            data.alarm ===
+            "NORMAL"
+        ){
+
+            alarmBox
+            .classList
+            .add(
+                "normal"
+            );
+        }
+
+        else if(
+            data.alarm ===
+            "PELIGRO"
+        ){
+
+            alarmBox
+            .classList
+            .add(
+                "warning"
+            );
+        }
+
+        else{
+
+            alarmBox
+            .classList
+            .add(
+                "critical"
+            );
+        }
+
+        // ===================
+        // GRAFICAS
+        // ===================
+
+        labels.push("");
+
+        tempData.push(
+            data.temperature
+        );
+
+        humData.push(
+            data.humidity
+        );
+
+        movData.push(
+            data.movement_level
+        );
+
+        if(
+            labels.length >
+            MAX_POINTS
+        ){
+
+            labels.shift();
+
+            tempData.shift();
+
+            humData.shift();
+
+            movData.shift();
+        }
+
+        // ASIGNAR DATOS
+
+        tempChart.data.labels =
+        labels;
+
+        tempChart
+        .data
+        .datasets[0]
+        .data =
+        tempData;
+
+        humChart.data.labels =
+        labels;
+
+        humChart
+        .data
+        .datasets[0]
+        .data =
+        humData;
+
+        movChart.data.labels =
+        labels;
+
+        movChart
+        .data
+        .datasets[0]
+        .data =
+        movData;
+
+        // UPDATE RAPIDO
+
+        tempChart.update(
+            "none"
+        );
+
+        humChart.update(
+            "none"
+        );
+
+        movChart.update(
+            "none"
+        );
+
+    }
+
+    catch(error){
+
+        console.log(
+            "Error:",
+            error
+        );
+    }
+}
+
+// =======================
+// REFRESH RAPIDO
+// =======================
+
+setInterval(
+    updateData,
+    150
+);
+
+updateData();
+
+</script>
+
+</body>
+</html>
